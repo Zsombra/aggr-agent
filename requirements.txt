@@ -1,0 +1,8 @@
+asyncio
+aiohttp
+websockets
+psycopg2-binary
+python-dotenv
+streamlit
+plotly
+pandas

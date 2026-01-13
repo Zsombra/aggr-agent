@@ -39,7 +39,7 @@ async def save_data(conn, channel, data):
                 
                 sql = "INSERT INTO liquidations (timestamp, symbol, side, price, quantity, usd_size) VALUES (%s, %s, %s, %s, %s, %s)"
                 cur.execute(sql, (ts, symbol_std, side, price, qty, usd_size))
-                print(f"[REKT] {coin} {side} Liq: ${usd_size:,.0f}")
+                print(f"[REKT] {coin} {side} Liq: ${usd_size:,.0f} | Price: {price}")
 
         # --- HANDLE TRADES (NEW) ---
         elif channel == 'trades':
@@ -101,7 +101,10 @@ async def listen_ws(conn):
                     elif channel == 'trades':
                         await save_data(conn, 'trades', data)
                     elif channel == 'pong':
-                        continue 
+                        continue
+                    else:
+                        if data.get('channel') != 'subscriptionResponse':
+                             print(f"[WS DEBUG] Received unknown channel: {channel} | Data: {msg[:200]}")
 
         except Exception as e:
             print(f"[WS ERROR] {e} - Reconnecting in 5s...")

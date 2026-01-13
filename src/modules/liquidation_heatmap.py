@@ -36,10 +36,36 @@ class LiquidationHeatmap:
         return df
     
     def get_current_price(self):
+        """Get current price from market_metrics, candles, or trades (with fallback)"""
         conn = self.get_connection()
         cur = conn.cursor()
-        cur.execute("SELECT price FROM liquidations WHERE symbol = %s ORDER BY timestamp DESC LIMIT 1", (self.symbol,))
+        
+        # Try market_metrics first (most reliable)
+        cur.execute("""
+            SELECT price FROM market_metrics 
+            WHERE symbol = %s AND price IS NOT NULL
+            ORDER BY timestamp DESC LIMIT 1
+        """, (self.symbol,))
         result = cur.fetchone()
+        
+        # Fallback to candles
+        if not result:
+            cur.execute("""
+                SELECT close FROM candles 
+                WHERE symbol = %s 
+                ORDER BY timestamp DESC LIMIT 1
+            """, (self.symbol,))
+            result = cur.fetchone()
+        
+        # Last resort: trades
+        if not result:
+            cur.execute("""
+                SELECT price FROM trades 
+                WHERE symbol = %s 
+                ORDER BY timestamp DESC LIMIT 1
+            """, (self.symbol,))
+            result = cur.fetchone()
+        
         conn.close()
         return float(result[0]) if result else 0
     
