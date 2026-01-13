@@ -25,7 +25,7 @@ class FundingMonitor:
                 SELECT timestamp, funding_rate, price
                 FROM market_metrics
                 WHERE symbol = %s
-                AND timestamp >= NOW() - INTERVAL '%s hours'
+                AND timestamp >= NOW() - %s * INTERVAL '1 hour'
                 ORDER BY timestamp ASC
             """
             df = pd.read_sql_query(query, conn, params=(self.symbol, hours))

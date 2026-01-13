@@ -9,7 +9,7 @@ load_dotenv()
 DB_CONFIG = {
     'host': os.getenv('DB_HOST', 'localhost'),
     'port': os.getenv('DB_PORT', '5432'),
-    'database': os.getenv('DB_NAME', 'aggr_data'),
+    'dbname': os.getenv('DB_NAME', 'aggr_data'),
     'user': os.getenv('DB_USER', 'aggr_user'),
     'password': os.getenv('DB_PASSWORD', 'your_password')
 }
@@ -39,9 +39,9 @@ def aggregate_candles(conn, symbol, timeframe, interval_seconds):
         # Aggregate trades into candles
         sql = """
             WITH candle_data AS (
-                SELECT 
-                    date_trunc('minute', timestamp) + 
-                        (EXTRACT(EPOCH FROM timestamp - date_trunc('minute', timestamp))::int / %s) * 
+                SELECT
+                    date_trunc('minute', timestamp) +
+                        (EXTRACT(EPOCH FROM timestamp - date_trunc('minute', timestamp))::int / %s) *
                         INTERVAL '1 second' * %s AS candle_time,
                     symbol,
                     MIN(price) as low,
@@ -51,12 +51,12 @@ def aggregate_candles(conn, symbol, timeframe, interval_seconds):
                     SUM(size) as volume,
                     SUM(CASE WHEN side = 'BUY' THEN size ELSE -size END) as cvd_delta
                 FROM trades
-                WHERE symbol = %s 
+                WHERE symbol = %s
                     AND timestamp > %s
                 GROUP BY candle_time, symbol
             )
             INSERT INTO candles (timestamp, exchange, symbol, timeframe, open, high, low, close, volume, cvd)
-            SELECT 
+            SELECT
                 candle_time,
                 'hyperliquid',
                 symbol,
@@ -68,15 +68,17 @@ def aggregate_candles(conn, symbol, timeframe, interval_seconds):
                 volume,
                 cvd_delta
             FROM candle_data
+            ON CONFLICT (timestamp, exchange, symbol, timeframe)
+            DO UPDATE SET
+                open = EXCLUDED.open,
+                high = EXCLUDED.high,
+                low = EXCLUDED.low,
+                close = EXCLUDED.close,
+                volume = EXCLUDED.volume,
+                cvd = EXCLUDED.cvd
         """
-        
-        # First delete existing candles for this time range to avoid duplicates
-        cur.execute("""
-            DELETE FROM candles 
-            WHERE symbol = %s AND timeframe = %s AND timestamp >= %s
-        """, (symbol, timeframe, start_time))
-        
-        # Then insert new candles
+
+        # Insert or update candles (ON CONFLICT handles duplicates)
         cur.execute(sql, (interval_seconds, interval_seconds, symbol, start_time, timeframe))
         rows_affected = cur.rowcount
         conn.commit()

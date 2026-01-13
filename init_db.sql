@@ -39,8 +39,11 @@ CREATE TABLE IF NOT EXISTS market_metrics (
 
 -- Index for performance
 CREATE INDEX IF NOT EXISTS idx_liq_ts ON liquidations(timestamp);
+CREATE INDEX IF NOT EXISTS idx_liq_symbol_ts ON liquidations(symbol, timestamp);
 CREATE INDEX IF NOT EXISTS idx_trades_ts ON trades(timestamp);
+CREATE INDEX IF NOT EXISTS idx_trades_symbol_ts ON trades(symbol, timestamp);
 CREATE INDEX IF NOT EXISTS idx_metrics_ts ON market_metrics(timestamp);
+CREATE INDEX IF NOT EXISTS idx_metrics_symbol_ts ON market_metrics(symbol, timestamp);
 
 -- Table for Candles (OHLCV data)
 CREATE TABLE IF NOT EXISTS candles (

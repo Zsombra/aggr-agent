@@ -6,7 +6,7 @@ load_dotenv()
 
 DB_CONFIG = {
     'host': os.getenv('DB_HOST', '127.0.0.1'),
-    'port': os.getenv('DB_PORT', '5433'),
+    'port': os.getenv('DB_PORT', '5432'),
     'dbname': os.getenv('DB_NAME', 'aggr_data'),
     'user': os.getenv('DB_USER', 'aggr_user'),
     'password': os.getenv('DB_PASSWORD'),

@@ -27,9 +27,9 @@ class LiquidationHeatmap:
     
     def get_liquidations(self, hours_back=24):
         conn = self.get_connection()
-        query = """SELECT timestamp, side, price, quantity, usd_size 
-                   FROM liquidations WHERE symbol = %s 
-                   AND timestamp > NOW() - INTERVAL '%s hours'
+        query = """SELECT timestamp, side, price, quantity, usd_size
+                   FROM liquidations WHERE symbol = %s
+                   AND timestamp > NOW() - %s * INTERVAL '1 hour'
                    ORDER BY timestamp DESC"""
         df = pd.read_sql(query, conn, params=(self.symbol, hours_back))
         conn.close()
