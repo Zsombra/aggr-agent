@@ -160,36 +160,17 @@ class OKXClient:
         arg = data.get("arg", {})
         inst_id = arg.get("instId", "")
         symbol = self._to_standard_symbol(inst_id)
-        action = data.get("action", "snapshot")
         book_data = data.get("data", [{}])[0]
 
-        if action == "snapshot":
-            bids = {float(b[0]): float(b[1]) for b in book_data.get("bids", [])}
-            asks = {float(a[0]): float(a[1]) for a in book_data.get("asks", [])}
-            self.orderbooks[symbol] = {"bids": bids, "asks": asks}
+        # books5 always sends full snapshots, not deltas
+        bids = {float(b[0]): float(b[1]) for b in book_data.get("bids", [])}
+        asks = {float(a[0]): float(a[1]) for a in book_data.get("asks", [])}
+        self.orderbooks[symbol] = {"bids": bids, "asks": asks}
+        
+        # Only log initialization once
+        if not self.initialized.get(symbol, False):
             self.initialized[symbol] = True
             logger.info(f"OKX orderbook initialized for {symbol}")
-        elif action == "update":
-            if not self.initialized.get(symbol, False):
-                return
-
-            ob = self.orderbooks.get(symbol)
-            if not ob:
-                return
-
-            for b in book_data.get("bids", []):
-                price, qty = float(b[0]), float(b[1])
-                if qty == 0:
-                    ob["bids"].pop(price, None)
-                else:
-                    ob["bids"][price] = qty
-
-            for a in book_data.get("asks", []):
-                price, qty = float(a[0]), float(a[1])
-                if qty == 0:
-                    ob["asks"].pop(price, None)
-                else:
-                    ob["asks"][price] = qty
 
         await self._emit_orderbook(symbol)
 

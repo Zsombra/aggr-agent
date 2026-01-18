@@ -100,8 +100,8 @@ class DeribitClient:
 
     async def _heartbeat(self, ws):
         """Send heartbeat to keep connection alive."""
-        while self.running and ws.open:
-            try:
+        try:
+            while self.running:
                 msg = {
                     "jsonrpc": "2.0",
                     "id": self._next_id(),
@@ -110,15 +110,15 @@ class DeribitClient:
                 }
                 await ws.send(json.dumps(msg))
                 await asyncio.sleep(15)
-            except Exception:
-                break
+        except Exception:
+            pass  # Connection closed
 
     async def _subscribe(self, ws):
         """Subscribe to all channels using JSON-RPC."""
         channels = []
         for sym in self.symbols:
             channels.extend([
-                f"trades.{sym}.raw",
+                f"trades.{sym}.100ms",  # Use 100ms instead of .raw (raw requires auth)
                 f"book.{sym}.100ms",
                 f"ticker.{sym}.100ms",
             ])
