@@ -14,6 +14,13 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from binance import BinanceClient, fetch_tickers_24hr, fetch_klines, fetch_exchange_info
+from bybit import BybitClient
+from okx import OKXClient
+from bitmex import BitMEXClient
+from deribit import DeribitClient
+from htx import HTXClient
+from coinbase import CoinbaseClient
+from hyperliquid import HyperliquidClient
 from database import db
 from news import news_client
 
@@ -23,6 +30,16 @@ logger = logging.getLogger(__name__)
 SYMBOLS = ["BTCUSDT"]
 
 binance_client: Optional[BinanceClient] = None
+bybit_client: Optional[BybitClient] = None
+okx_client: Optional[OKXClient] = None
+bitmex_client: Optional[BitMEXClient] = None
+deribit_client: Optional[DeribitClient] = None
+htx_client: Optional[HTXClient] = None
+coinbase_client: Optional[CoinbaseClient] = None
+hyperliquid_client: Optional[HyperliquidClient] = None
+
+# All exchange clients for easy iteration
+exchange_clients: list = []
 
 TIME_RANGE_MS = {
     "15m": 15 * 60 * 1000,
@@ -421,8 +438,23 @@ async def store_orderbook_snapshots():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global binance_client
+    global binance_client, bybit_client, okx_client, bitmex_client, deribit_client, htx_client, coinbase_client, hyperliquid_client, exchange_clients
+    
+    # Initialize all exchange clients
     binance_client = BinanceClient(SYMBOLS)
+    bybit_client = BybitClient(SYMBOLS)
+    okx_client = OKXClient(SYMBOLS)
+    bitmex_client = BitMEXClient(SYMBOLS)
+    deribit_client = DeribitClient(SYMBOLS)
+    htx_client = HTXClient(SYMBOLS)
+    coinbase_client = CoinbaseClient(SYMBOLS)
+    hyperliquid_client = HyperliquidClient(SYMBOLS)
+    
+    exchange_clients = [
+        binance_client, bybit_client, okx_client, 
+        bitmex_client, deribit_client, htx_client, 
+        coinbase_client, hyperliquid_client
+    ]
 
     async def on_trade(trade: dict):
         db.insert_trade(
@@ -471,19 +503,23 @@ async def lifespan(app: FastAPI):
                 pass
 
     async def on_liquidation(liq: dict):
-        for ws, sub in manager.get_subscribers_for_stream("liquidation", liq["symbol"]):
+        for ws, sub in manager.get_subscribers_for_stream("liquidation", liq["symbol"], liq.get("exchange", "binancef")):
             config = sub["config"]
             min_notional = config.get("minNotional", 0)
-            if liq["quoteQty"] < min_notional:
+            if liq.get("notionalUsd", 0) < min_notional:
                 continue
             try:
                 await ws.send_json({"type": "liquidation", "data": liq})
             except Exception:
                 pass
 
-    binance_client.on_trade = on_trade
-    binance_client.on_depth = on_depth
-    binance_client.on_liquidation = on_liquidation
+    # Wire up callbacks for all exchange clients
+    for client in exchange_clients:
+        client.on_trade = on_trade
+        client.on_depth = on_depth
+        client.on_liquidation = on_liquidation
+        if hasattr(client, 'on_mark_price'):
+            client.on_mark_price = None  # Can be wired up if needed
 
     async def on_news(news: dict):
         for ws, sub in manager.get_all_subscribers_for_stream("news"):
@@ -494,8 +530,11 @@ async def lifespan(app: FastAPI):
 
     news_client.on_news = on_news
 
-    await binance_client.start()
-    logger.info("Binance client started")
+    # Start all exchange clients
+    for client in exchange_clients:
+        await client.start()
+        client_name = client.__class__.__name__.replace('Client', '')
+        logger.info(f"{client_name} client started")
 
     await news_client.start()
     logger.info("News client started")
@@ -508,7 +547,9 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    await binance_client.stop()
+    # Stop all exchange clients
+    for client in exchange_clients:
+        await client.stop()
     await news_client.stop()
     db.close()
 
@@ -717,18 +758,105 @@ async def get_exchanges():
     except Exception:
         symbols = SYMBOLS
 
-    return [{
-        "name": "binancef",
-        "symbols": symbols,
-        "capabilities": {
-            "trades": True,
-            "orderbook": True,
-            "liquidations": True,
-            "marketStats": True,
-            "orderbookHeatmap": True,
-            "screener": True,
-        }
-    }]
+    exchanges = [
+        {
+            "name": "binancef",
+            "symbols": symbols,
+            "capabilities": {
+                "trades": True,
+                "orderbook": True,
+                "liquidations": True,
+                "marketStats": True,
+                "orderbookHeatmap": True,
+                "screener": True,
+            }
+        },
+        {
+            "name": "bybit",
+            "symbols": SYMBOLS,
+            "capabilities": {
+                "trades": True,
+                "orderbook": True,
+                "liquidations": True,
+                "marketStats": True,
+                "orderbookHeatmap": False,
+                "screener": False,
+            }
+        },
+        {
+            "name": "okx",
+            "symbols": SYMBOLS,
+            "capabilities": {
+                "trades": True,
+                "orderbook": True,
+                "liquidations": True,
+                "marketStats": True,
+                "orderbookHeatmap": False,
+                "screener": False,
+            }
+        },
+        {
+            "name": "bitmex",
+            "symbols": SYMBOLS,
+            "capabilities": {
+                "trades": True,
+                "orderbook": True,
+                "liquidations": True,
+                "marketStats": True,
+                "orderbookHeatmap": False,
+                "screener": False,
+            }
+        },
+        {
+            "name": "deribit",
+            "symbols": SYMBOLS,
+            "capabilities": {
+                "trades": True,
+                "orderbook": True,
+                "liquidations": False,
+                "marketStats": True,
+                "orderbookHeatmap": False,
+                "screener": False,
+            }
+        },
+        {
+            "name": "htx",
+            "symbols": SYMBOLS,
+            "capabilities": {
+                "trades": True,
+                "orderbook": True,
+                "liquidations": True,
+                "marketStats": True,
+                "orderbookHeatmap": False,
+                "screener": False,
+            }
+        },
+        {
+            "name": "coinbase",
+            "symbols": SYMBOLS,
+            "capabilities": {
+                "trades": True,
+                "orderbook": True,
+                "liquidations": False,  # Spot market
+                "marketStats": False,  # Spot market
+                "orderbookHeatmap": False,
+                "screener": False,
+            }
+        },
+        {
+            "name": "hyperliquid",
+            "symbols": SYMBOLS,
+            "capabilities": {
+                "trades": True,
+                "orderbook": True,
+                "liquidations": False,
+                "marketStats": True,
+                "orderbookHeatmap": False,
+                "screener": False,
+            }
+        },
+    ]
+    return exchanges
 
 
 @app.get("/api/features")
@@ -752,14 +880,14 @@ async def get_market_stats():
     if now - _market_stats_cache["timestamp"] < _market_stats_cache_ttl:
         return _market_stats_cache["data"]
 
-    if not binance_client:
-        return []
-
     result = []
     for symbol in SYMBOLS:
-        stats = binance_client.get_market_stats(symbol)
-        if stats:
-            result.append(stats)
+        # Get stats from all exchange clients
+        for client in exchange_clients:
+            if client and hasattr(client, 'get_market_stats'):
+                stats = client.get_market_stats(symbol)
+                if stats:
+                    result.append(stats)
 
     _market_stats_cache = {"data": result, "timestamp": now}
     return result
